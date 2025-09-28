@@ -7,7 +7,7 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:  # allow manual trigger tooo
+  workflow_dispatch:  # allow manual trigger too
 
 jobs:
   deploy-production:
@@ -35,12 +35,6 @@ jobs:
       - name: Create production namespace (if not exists)
         run: |
           kubectl create namespace production --dry-run=client -o yaml | kubectl apply -f -
-
-      # 🧹 Cleanup old resources before deployment
-      - name: Clean old resources
-        run: |
-          echo "Cleaning old resources from production namespace..."
-          kubectl delete -n production -f k8s/ --ignore-not-found || true
 
       - name: Apply configs & secrets
         run: |
@@ -81,10 +75,14 @@ jobs:
           echo "--- Modified main.js ---"
           head -n 20 frontend/main.js
 
+      # ✅ NEW: Login to ACR before pushing
+      - name: Login to Azure Container Registry
+        run: az acr login --name ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+
       - name: Rebuild & Push Frontend with injected IPs
         run: |
-          docker build -t ${{ secrets.AZURE_CONTAINER_REGISTRY }}/frontend:latest ./frontend/
-          docker push ${{ secrets.AZURE_CONTAINER_REGISTRY }}/frontend:latest
+          docker build -t ${{ secrets.AZURE_CONTAINER_REGISTRY }}/frontend:prod ./frontend/
+          docker push ${{ secrets.AZURE_CONTAINER_REGISTRY }}/frontend:prod
 
       - name: Redeploy Frontend with updated image
         run: |
