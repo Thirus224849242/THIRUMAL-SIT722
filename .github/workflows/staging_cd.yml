@@ -1,0 +1,75 @@
+name: CD – Staging Deploy & Teardown
+
+on:
+  workflow_run:
+    workflows: ["CI – Test, Build & Push to ACR (testing branch)"]
+    types:
+      - completed
+
+jobs:
+  deploy-staging:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Get AKS Credentials
+        run: |
+          az aks get-credentials \
+            --name ${{ secrets.AKS_CLUSTER_NAME }} \
+            --resource-group ${{ secrets.AKS_RESOURCE_GROUP }} \
+            --overwrite-existing
+
+      - name: Create staging namespace
+        run: |
+          kubectl create namespace staging --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy to staging
+        run: |
+          kubectl apply -n staging -f k8s/
+
+      - name: Wait for Pods to be Ready
+        run: |
+          kubectl wait --for=condition=available --timeout=120s deployment --all -n staging
+
+      - name: Smoke Test Services
+        run: |
+          kubectl get svc -n staging
+          # Example: curl frontend if LoadBalancer IP is assigned
+          FRONTEND_IP=$(kubectl get svc frontend-service -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          curl -s http://$FRONTEND_IP/health || exit 1
+
+  # 🛑 Teardown job, runs after staging is tested
+  teardown-staging:
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Get AKS Credentials
+        run: |
+          az aks get-credentials \
+            --name ${{ secrets.AKS_CLUSTER_NAME }} \
+            --resource-group ${{ secrets.AKS_RESOURCE_GROUP }} \
+            --overwrite-existing
+
+      - name: Delete staging namespace
+        run: kubectl delete namespace staging --ignore-not-found
