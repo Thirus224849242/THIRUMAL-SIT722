@@ -2,7 +2,7 @@ name: CD – Staging Deploy & Teardown
 
 on:
   workflow_run:
-    workflows: ["CI Test, Build & Push to ACR (testing branch)"]
+    workflows: ["CI – Test, Build & Push to ACR (testing branch)"]
     types:
       - completed
 
@@ -43,31 +43,28 @@ jobs:
         run: |
           kubectl apply -n staging -f k8s/
 
-      - name: Debug pods BEFORE wait
-        run: |
-          echo "===== Current Pods ====="
-          kubectl get pods -n staging -o wide
-          echo "===== Deployments ====="
-          kubectl get deploy -n staging
-          echo "===== Events ====="
-          kubectl get events -n staging --sort-by=.lastTimestamp | tail -n 20
-
-      - name: Wait for Pods to be Ready (with debug on fail)
+      - name: Wait for Pods to be Ready (retry with debug)
         run: |
           set +e
-          kubectl wait --for=condition=available --timeout=400s deployment --all -n staging
-          STATUS=$?
-          echo "kubectl wait exit code: $STATUS"
-          echo "===== Pods after wait ====="
-          kubectl get pods -n staging -o wide
-          echo "===== Describe deployments ====="
-          kubectl describe deploy -n staging || true
-          echo "===== Recent pod logs ====="
-          for pod in $(kubectl get pods -n staging -o jsonpath='{.items[*].metadata.name}' | head -n 5); do
-            echo "--- Logs for $pod ---"
-            kubectl logs $pod -n staging --tail=40 || true
+          for i in {1..6}; do
+            echo "🔄 Attempt $i to wait for deployments..."
+            kubectl wait --for=condition=available --timeout=90s deployment --all -n staging
+            STATUS=$?
+            if [ $STATUS -eq 0 ]; then
+              echo "✅ Pods are ready!"
+              exit 0
+            fi
+            echo "❌ Pods not ready yet. Dumping debug info..."
+            kubectl get pods -n staging -o wide
+            for pod in $(kubectl get pods -n staging -o jsonpath='{.items[*].metadata.name}'); do
+              echo "--- Describe $pod ---"
+              kubectl describe pod $pod -n staging || true
+              echo "--- Last 40 logs from $pod ---"
+              kubectl logs $pod -n staging --tail=40 || true
+            done
+            sleep 90
           done
-          exit $STATUS
+          exit 1
 
       - name: Smoke Test Services
         run: |
