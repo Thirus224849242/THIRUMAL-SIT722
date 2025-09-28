@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: product-db
+spec:
+  ports:
+    - port: 5432
+  selector:
+    app: product-db
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: product-db
+  template:
+    metadata:
+      labels:
+        app: product-db
+    spec:
+      containers:
+        - name: product-db
+          image: postgres:15
+          env:
+            - name: POSTGRES_DB
+              value: products
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: password
+          ports:
+            - containerPort: 5432
