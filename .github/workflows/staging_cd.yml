@@ -85,7 +85,7 @@ jobs:
           echo "--- Modified main.js ---"
           head -n 20 frontend/main.js
           
-      # ✅ NEW: Login to ACR before pushing
+      # ✅ NEW: Login to ACR before pushingg
       - name: Login to Azure Container Registry
         run: az acr login --name ${{ secrets.AZURE_CONTAINER_REGISTRY }}    
 
