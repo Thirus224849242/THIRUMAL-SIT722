@@ -2,7 +2,7 @@ name: CD – Staging Deploy & Teardown
 
 on:
   workflow_run:
-    workflows: ["CI – Test, Build & Push to ACR (testing branch)"]
+    workflows: ["CI Test, Build & Push to ACR (testing branch)"]
     types:
       - completed
 
@@ -43,26 +43,32 @@ jobs:
         run: |
           kubectl apply -n staging -f k8s/
 
-      - name: Wait for Pods to be Ready (retry with debug)
+      - name: Wait for Pods to be Ready (with retries & debug)
         run: |
           set +e
-          for i in {1..6}; do
+          for i in {1..8}; do
             echo "🔄 Attempt $i to wait for deployments..."
             kubectl wait --for=condition=available --timeout=90s deployment --all -n staging
             STATUS=$?
             if [ $STATUS -eq 0 ]; then
-              echo "✅ Pods are ready!"
+              echo "✅ All deployments are available!"
               exit 0
             fi
             echo "❌ Pods not ready yet. Dumping debug info..."
+            echo "----- Pods -----"
             kubectl get pods -n staging -o wide
+            echo "----- Deployments -----"
+            kubectl get deploy -n staging
+            echo "----- Events -----"
+            kubectl get events -n staging --sort-by=.lastTimestamp | tail -n 20
             for pod in $(kubectl get pods -n staging -o jsonpath='{.items[*].metadata.name}'); do
               echo "--- Describe $pod ---"
               kubectl describe pod $pod -n staging || true
-              echo "--- Last 40 logs from $pod ---"
-              kubectl logs $pod -n staging --tail=40 || true
+              echo "--- Last 50 logs for $pod ---"
+              kubectl logs $pod -n staging --tail=50 || true
             done
-            sleep 90
+            echo "Retrying in 60s..."
+            sleep 60
           done
           exit 1
 
