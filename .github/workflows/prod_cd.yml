@@ -52,6 +52,39 @@ jobs:
           kubectl rollout status deployment/product-service -n production --timeout=300s
           kubectl rollout status deployment/frontend -n production --timeout=300s
 
+      - name: Get backend LoadBalancer IPs
+        id: get-ips
+        run: |
+          echo "Fetching backend service IPs..."
+          PRODUCT_IP=$(kubectl get svc product-service -n production -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          ORDER_IP=$(kubectl get svc order-service -n production -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          CUSTOMER_IP=$(kubectl get svc customer-service -n production -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          echo "product_api_ip=http://$PRODUCT_IP:8000" >> $GITHUB_OUTPUT
+          echo "order_api_ip=http://$ORDER_IP:8001" >> $GITHUB_OUTPUT
+          echo "customer_api_ip=http://$CUSTOMER_IP:8002" >> $GITHUB_OUTPUT
+          echo "✅ Backend IPs:"
+          echo "Product: http://$PRODUCT_IP:8000"
+          echo "Order:   http://$ORDER_IP:8001"
+          echo "Customer: http://$CUSTOMER_IP:8002"
+
+      - name: Inject Backend IPs into Frontend
+        run: |
+          sed -i "s|_PRODUCT_API_URL_|${{ steps.get-ips.outputs.product_api_ip }}|g" frontend/main.js
+          sed -i "s|_ORDER_API_URL_|${{ steps.get-ips.outputs.order_api_ip }}|g" frontend/main.js
+          sed -i "s|_CUSTOMER_API_URL_|${{ steps.get-ips.outputs.customer_api_ip }}|g" frontend/main.js
+          echo "--- Modified main.js ---"
+          head -n 20 frontend/main.js
+
+      - name: Rebuild & Push Frontend with injected IPs
+        run: |
+          docker build -t ${{ secrets.AZURE_CONTAINER_REGISTRY }}/frontend:prod ./frontend/
+          docker push ${{ secrets.AZURE_CONTAINER_REGISTRY }}/frontend:prod
+
+      - name: Redeploy Frontend with updated image
+        run: |
+          kubectl set image deployment/frontend frontend=${{ secrets.AZURE_CONTAINER_REGISTRY }}/frontend:prod -n production
+          kubectl rollout status deployment/frontend -n production --timeout=300s
+
       - name: Get frontend LoadBalancer IP
         run: |
           echo "Waiting for frontend LoadBalancer IP..."

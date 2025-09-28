@@ -41,7 +41,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "8001:80"
+      - "8000:80"
 
   order-service:
     build: ./backend/order_service
@@ -54,7 +54,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "8002:80"
+      - "8001:80"
 
   customer-service:
     build: ./backend/customer_service
@@ -67,7 +67,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "8003:80"
+      - "8002:80"
 
   # === Frontend ===
   frontend:

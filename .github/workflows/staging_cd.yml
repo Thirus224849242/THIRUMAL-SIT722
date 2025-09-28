@@ -39,7 +39,7 @@ jobs:
           kubectl apply -n staging -f k8s/configmaps.yaml || true
           kubectl apply -n staging -f k8s/secrets.yaml || true
 
-      - name: Deploy to staging
+      - name: Deploy all services
         run: |
           kubectl apply -n staging -f k8s/
 
@@ -55,24 +55,47 @@ jobs:
               exit 0
             fi
             echo "❌ Pods not ready yet. Dumping debug info..."
-            echo "----- Pods -----"
             kubectl get pods -n staging -o wide
-            echo "----- Deployments -----"
             kubectl get deploy -n staging
-            echo "----- Events -----"
             kubectl get events -n staging --sort-by=.lastTimestamp | tail -n 20
-            for pod in $(kubectl get pods -n staging -o jsonpath='{.items[*].metadata.name}'); do
-              echo "--- Describe $pod ---"
-              kubectl describe pod $pod -n staging || true
-              echo "--- Last 50 logs for $pod ---"
-              kubectl logs $pod -n staging --tail=50 || true
-            done
-            echo "Retrying in 60s..."
             sleep 60
           done
           exit 1
 
-      - name: Smoke Test Services (with IP retry)
+      - name: Get backend LoadBalancer IPs
+        id: get-ips
+        run: |
+          echo "Fetching backend service IPs..."
+          PRODUCT_IP=$(kubectl get svc product-service -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          ORDER_IP=$(kubectl get svc order-service -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          CUSTOMER_IP=$(kubectl get svc customer-service -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          echo "product_api_ip=http://$PRODUCT_IP:8000" >> $GITHUB_OUTPUT
+          echo "order_api_ip=http://$ORDER_IP:8001" >> $GITHUB_OUTPUT
+          echo "customer_api_ip=http://$CUSTOMER_IP:8002" >> $GITHUB_OUTPUT
+          echo "✅ Backend IPs:"
+          echo "Product: http://$PRODUCT_IP:8000"
+          echo "Order:   http://$ORDER_IP:8001"
+          echo "Customer: http://$CUSTOMER_IP:8002"
+
+      - name: Inject Backend IPs into Frontend
+        run: |
+          sed -i "s|_PRODUCT_API_URL_|${{ steps.get-ips.outputs.product_api_ip }}|g" frontend/main.js
+          sed -i "s|_ORDER_API_URL_|${{ steps.get-ips.outputs.order_api_ip }}|g" frontend/main.js
+          sed -i "s|_CUSTOMER_API_URL_|${{ steps.get-ips.outputs.customer_api_ip }}|g" frontend/main.js
+          echo "--- Modified main.js ---"
+          head -n 20 frontend/main.js
+
+      - name: Rebuild & Push Frontend with injected IPs
+        run: |
+          docker build -t ${{ secrets.AZURE_CONTAINER_REGISTRY }}/frontend:staging ./frontend/
+          docker push ${{ secrets.AZURE_CONTAINER_REGISTRY }}/frontend:staging
+
+      - name: Redeploy Frontend with updated image
+        run: |
+          kubectl set image deployment/frontend frontend=${{ secrets.AZURE_CONTAINER_REGISTRY }}/frontend:staging -n staging
+          kubectl rollout status deployment/frontend -n staging --timeout=300s
+
+      - name: Get Frontend IP & Smoke Test
         run: |
           echo "🔍 Waiting for frontend LoadBalancer IP..."
           for i in {1..10}; do
@@ -88,7 +111,6 @@ jobs:
           kubectl get svc -n staging
           exit 1
 
-  # 🛑 Teardown job, runs after staging is tested
   teardown-staging:
     needs: deploy-staging
     runs-on: ubuntu-latest
