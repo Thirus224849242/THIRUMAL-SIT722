@@ -2,7 +2,7 @@ name: CD – Staging Deploy & Teardown
 
 on:
   workflow_run:
-    workflows: ["CI Test, Build & Push to ACR (testing branch)"]
+    workflows: ["CI – Test, Build & Push to ACR (testing branch)"]
     types:
       - completed
 
@@ -34,19 +34,36 @@ jobs:
         run: |
           kubectl create namespace staging --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Apply configs & secrets
+        run: |
+          kubectl apply -n staging -f k8s/configmaps.yaml || true
+          kubectl apply -n staging -f k8s/secrets.yaml || true
+
       - name: Deploy to staging
         run: |
           kubectl apply -n staging -f k8s/
 
+      - name: Debug pods before wait
+        run: |
+          echo "===== Pods status ====="
+          kubectl get pods -n staging -o wide
+          echo "===== Deployment events ====="
+          kubectl describe deployment -n staging || true
+          echo "===== First 3 pod logs (if available) ====="
+          for pod in $(kubectl get pods -n staging -o jsonpath='{.items[*].metadata.name}' | head -n 3); do
+            echo "--- Logs for $pod ---"
+            kubectl logs $pod -n staging --tail=50 || true
+          done
+
       - name: Wait for Pods to be Ready
         run: |
-          kubectl wait --for=condition=available --timeout=120s deployment --all -n staging
+          kubectl wait --for=condition=available --timeout=300s deployment --all -n staging
 
       - name: Smoke Test Services
         run: |
           kubectl get svc -n staging
-          # Example: curl frontend if LoadBalancer IP is assigned
           FRONTEND_IP=$(kubectl get svc frontend-service -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          echo "Frontend IP: $FRONTEND_IP"
           curl -s http://$FRONTEND_IP/health || exit 1
 
   # 🛑 Teardown job, runs after staging is tested
