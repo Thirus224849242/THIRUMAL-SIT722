@@ -2,7 +2,7 @@ name: CD – Staging Deploy & Teardown
 
 on:
   workflow_run:
-    workflows: ["CI – Test, Build & Push to ACR (testing branch)"]
+    workflows: ["CI Test, Build & Push to ACR (testing branch)"]
     types:
       - completed
 
@@ -43,21 +43,31 @@ jobs:
         run: |
           kubectl apply -n staging -f k8s/
 
-      - name: Debug pods before wait
+      - name: Debug pods BEFORE wait
         run: |
-          echo "===== Pods status ====="
+          echo "===== Current Pods ====="
           kubectl get pods -n staging -o wide
-          echo "===== Deployment events ====="
-          kubectl describe deployment -n staging || true
-          echo "===== First 3 pod logs (if available) ====="
-          for pod in $(kubectl get pods -n staging -o jsonpath='{.items[*].metadata.name}' | head -n 3); do
-            echo "--- Logs for $pod ---"
-            kubectl logs $pod -n staging --tail=50 || true
-          done
+          echo "===== Deployments ====="
+          kubectl get deploy -n staging
+          echo "===== Events ====="
+          kubectl get events -n staging --sort-by=.lastTimestamp | tail -n 20
 
-      - name: Wait for Pods to be Ready
+      - name: Wait for Pods to be Ready (with debug on fail)
         run: |
-          kubectl wait --for=condition=available --timeout=300s deployment --all -n staging
+          set +e
+          kubectl wait --for=condition=available --timeout=400s deployment --all -n staging
+          STATUS=$?
+          echo "kubectl wait exit code: $STATUS"
+          echo "===== Pods after wait ====="
+          kubectl get pods -n staging -o wide
+          echo "===== Describe deployments ====="
+          kubectl describe deploy -n staging || true
+          echo "===== Recent pod logs ====="
+          for pod in $(kubectl get pods -n staging -o jsonpath='{.items[*].metadata.name}' | head -n 5); do
+            echo "--- Logs for $pod ---"
+            kubectl logs $pod -n staging --tail=40 || true
+          done
+          exit $STATUS
 
       - name: Smoke Test Services
         run: |
