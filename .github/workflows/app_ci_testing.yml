@@ -3,7 +3,7 @@
 # Trigger: push to `testing` branch
 # Steps: Test -> Build -> Push to ACR
 
-name: CI – Test, Build & Push to ACR (testing branch)
+name: CI Test, Build & Push to ACR (testing branch)
 
 on:
   push:

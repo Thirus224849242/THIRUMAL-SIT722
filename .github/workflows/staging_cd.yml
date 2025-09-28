@@ -2,7 +2,7 @@ name: CD – Staging Deploy & Teardown
 
 on:
   workflow_run:
-    workflows: ["CI – Test, Build & Push to ACR (testing branch)"]
+    workflows: ["CI Test, Build & Push to ACR (testing branch)"]
     types:
       - completed
 
