@@ -75,6 +75,10 @@ jobs:
           echo "--- Modified main.js ---"
           head -n 20 frontend/main.js
 
+      # ✅ NEW: Login to ACR before pushing
+      - name: Login to Azure Container Registry
+        run: az acr login --name ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+
       - name: Rebuild & Push Frontend with injected IPs
         run: |
           docker build -t ${{ secrets.AZURE_CONTAINER_REGISTRY }}/frontend:prod ./frontend/
