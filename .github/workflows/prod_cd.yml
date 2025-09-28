@@ -7,7 +7,7 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:  # allow manual trigger too
+  workflow_dispatch:  # allow manual trigger tooo
 
 jobs:
   deploy-production:
