@@ -38,10 +38,12 @@ logging.getLogger("uvicorn.error").setLevel(logging.INFO)
 
 # --- Service URLs Configuration ---
 CUSTOMER_SERVICE_URL = os.getenv("CUSTOMER_SERVICE_URL", "http://localhost:8002")
-logger.info(
-    f"Order Service: Configured to communicate with Customer Service at: {CUSTOMER_SERVICE_URL}"
-)
+PRODUCT_SERVICE_URL = os.getenv("PRODUCT_SERVICE_URL", "http://localhost:8000")
 
+logger.info(
+    f"Order Service: Configured Customer Service URL: {CUSTOMER_SERVICE_URL}, "
+    f"Product Service URL: {PRODUCT_SERVICE_URL}"
+)
 
 # --- RabbitMQ Configuration ---
 RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
