@@ -55,4 +55,14 @@ jobs:
       - name: Get frontend LoadBalancer IP
         run: |
           echo "Waiting for frontend LoadBalancer IP..."
-          kubectl get svc frontend-service -n production -w
+          for i in {1..30}; do
+            FRONTEND_IP=$(kubectl get svc frontend-service -n production -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            if [[ -n "$FRONTEND_IP" ]]; then
+              echo "✅ Frontend is available at: http://$FRONTEND_IP"
+              exit 0
+            fi
+            echo "Still pending... retrying in 10s"
+            sleep 10
+          done
+          echo "❌ Timed out waiting for LoadBalancer IP"
+          exit 1
