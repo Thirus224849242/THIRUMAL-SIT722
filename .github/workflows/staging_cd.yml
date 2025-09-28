@@ -72,12 +72,21 @@ jobs:
           done
           exit 1
 
-      - name: Smoke Test Services
+      - name: Smoke Test Services (with IP retry)
         run: |
+          echo "🔍 Waiting for frontend LoadBalancer IP..."
+          for i in {1..10}; do
+            FRONTEND_IP=$(kubectl get svc frontend-service -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            if [ -n "$FRONTEND_IP" ]; then
+              echo "✅ Frontend IP acquired: $FRONTEND_IP"
+              curl -s http://$FRONTEND_IP/health && exit 0
+            fi
+            echo "⚠️ No IP yet, retrying in 30s... (attempt $i)"
+            sleep 30
+          done
+          echo "❌ Frontend IP not assigned after waiting."
           kubectl get svc -n staging
-          FRONTEND_IP=$(kubectl get svc frontend-service -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-          echo "Frontend IP: $FRONTEND_IP"
-          curl -s http://$FRONTEND_IP/health || exit 1
+          exit 1
 
   # 🛑 Teardown job, runs after staging is tested
   teardown-staging:
