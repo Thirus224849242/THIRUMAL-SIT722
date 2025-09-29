@@ -1,7 +1,7 @@
 # .github/workflows/app_ci_testing.yml
 # Complete CI pipeline for frontend + backend services
 # Trigger: push to `testing` branch
-# Steps: Test -> Build -> Push to ACR
+# Steps: Test -> Build -> Push to ACR1
 
 name: CI Test, Build & Push to ACR (testing branch)
 
