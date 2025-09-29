@@ -62,20 +62,32 @@ jobs:
           done
           exit 1
 
-      - name: Get backend LoadBalancer IPs
+      - name: Wait for backend LoadBalancer IPs
         id: get-ips
         run: |
           echo "Fetching backend service IPs..."
-          PRODUCT_IP=$(kubectl get svc product-service -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-          ORDER_IP=$(kubectl get svc order-service -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-          CUSTOMER_IP=$(kubectl get svc customer-service -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-          echo "product_api_ip=http://$PRODUCT_IP:8000" >> $GITHUB_OUTPUT
-          echo "order_api_ip=http://$ORDER_IP:8001" >> $GITHUB_OUTPUT
-          echo "customer_api_ip=http://$CUSTOMER_IP:8002" >> $GITHUB_OUTPUT
-          echo "✅ Backend IPs:"
-          echo "Product: http://$PRODUCT_IP:8000"
-          echo "Order:   http://$ORDER_IP:8001"
-          echo "Customer: http://$CUSTOMER_IP:8002"
+          for svc in product-service order-service customer-service; do
+            for i in {1..20}; do
+              IP=$(kubectl get svc $svc -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+              if [[ -n "$IP" ]]; then
+                echo "$svc external IP: $IP"
+                break
+              fi
+              echo "$svc still pending... retrying in 15s (attempt $i)"
+              sleep 15
+            done
+            if [[ -z "$IP" ]]; then
+              echo "❌ $svc did not get an external IP in time."
+              exit 1
+            fi
+            if [[ "$svc" == "product-service" ]]; then
+              echo "product_api_ip=http://$IP:8000" >> $GITHUB_OUTPUT
+            elif [[ "$svc" == "order-service" ]]; then
+              echo "order_api_ip=http://$IP:8001" >> $GITHUB_OUTPUT
+            elif [[ "$svc" == "customer-service" ]]; then
+              echo "customer_api_ip=http://$IP:8002" >> $GITHUB_OUTPUT
+            fi
+          done
 
       - name: Inject Backend IPs into Frontend
         run: |
@@ -85,9 +97,8 @@ jobs:
           echo "--- Modified main.js ---"
           head -n 20 frontend/main.js
           
-      # ✅ NEW: Login to ACR before pushingg
       - name: Login to Azure Container Registry
-        run: az acr login --name ${{ secrets.AZURE_CONTAINER_REGISTRY }}    
+        run: az acr login --name ${{ secrets.AZURE_CONTAINER_REGISTRY }}
 
       - name: Rebuild & Push Frontend with injected IPs
         run: |
